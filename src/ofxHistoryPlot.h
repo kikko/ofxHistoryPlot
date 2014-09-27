@@ -16,13 +16,37 @@
 #define DEFAULT_WIDTH	160.0f
 #define DEFAULT_HEIGHT	120.0f
 
+struct Value {
+    Value(float * val, string varName, ofColor lineColor):
+        valf(val),
+        varName(varName),
+        lineColor(lineColor){
+        
+            plotMesh.setMode(OF_PRIMITIVE_LINE_STRIP);
+            smoothPlotMesh.setMode(OF_PRIMITIVE_LINE_STRIP);
+    }
+    
+    string			varName;
+    float *			valf;
+    vector<float>	values;
+    vector<float>	smoothValues;
+    
+    ofColor lineColor;
+    ofVboMesh plotMesh;
+    ofVboMesh smoothPlotMesh;
+};
+
 class ofxHistoryPlot{
 
 	public :
-
+    
+        ofxHistoryPlot(float maxHistory, bool autoUpdate_ = true);
 		ofxHistoryPlot(float * val, string varName, float maxHistory, bool autoUpdate_ = true);
 		
-		void update( float val = numeric_limits<float>::quiet_NaN() );	//adds in the plot current value of the specified var, 
+        void add(float * val, string varName);
+        void add(float * val, string varName, ofColor lineColor);
+    
+		void update( /*float val = numeric_limits<float>::quiet_NaN()*/ );	//adds in the plot current value of the specified var,
 											//usually you would call this once per frame if not autoUpdate_ == false for the graph to update
 										
 		void draw(float x, float y , float w = DEFAULT_WIDTH, float h = DEFAULT_HEIGHT);	//draws a box
@@ -38,7 +62,7 @@ class ofxHistoryPlot{
 		void setPrecision(int prec){ precision = ofClamp(prec, 0, 15); }	//number of decimals to show
 		float getHeight(){ return DEFAULT_HEIGHT;}
 		float getWidth(){ return DEFAULT_WIDTH;}
-		void setColor(ofColor c){ colorSet = true; lineColor = c;}
+//		void setColor(ofColor c){ colorSet = true; lineColor = c;}
 		void setBackgroundColor(ofColor c){ bgColor = c;}
 		void setGridColor(ofColor c){ gridColor = c;}
 		void setShowNumericalInfo(bool show){ showNumericalInfo = show;}	
@@ -60,11 +84,7 @@ class ofxHistoryPlot{
 		void refillGridMesh(float x, float y , float w, float h);
 		void refillPlotMesh(ofVboMesh& mesh, vector<float> & vals, float x, float y , float w, float h);
 
-		string			varName;
-		float *			valf;
-	
-		vector<float>	values;
-		vector<float>	smoothValues;
+        vector<Value>	values;
 
 		vector<float>	horizontalGuides;
 		vector<ofColor>	horizontalGuideColors;
@@ -90,7 +110,6 @@ class ofxHistoryPlot{
 		unsigned int	count;
 	
 		bool			colorSet;
-		ofColor			lineColor;
 		ofColor			bgColor;
 		ofColor			gridColor;
 			
@@ -105,8 +124,6 @@ class ofxHistoryPlot{
 		bool plotNeedsRefresh;
 
 		ofVboMesh gridMesh;
-		ofVboMesh plotMesh;
-		ofVboMesh smoothPlotMesh;
 
 		ofRectangle prevRect;
 };

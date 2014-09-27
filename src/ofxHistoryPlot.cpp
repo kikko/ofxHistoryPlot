@@ -10,24 +10,16 @@
 #include "ofxHistoryPlot.h"
 #include <float.h>
 
-ofxHistoryPlot::ofxHistoryPlot(float * val, string varName, float maxHistory, bool autoUpdate_){
+ofxHistoryPlot::ofxHistoryPlot(float maxHistory, bool autoUpdate_){
 	
 	autoUpdate = autoUpdate_;
-	this->varName = varName;
-	valf = val;
-	if (val != NULL){
-		lowest = *valf * 0.99;
-		highest = *valf * 1.01;
-	}else{
-		lowest = -1;
-		highest = 1;
-	}
+    
 	MAX_HISTORY = maxHistory;
 	manualRange = false;
 	onlyLowestIsFixed = false;
 	count = 1;
 	precision = 2;
-	colorSet = false;
+	colorSet = true;
 	lineWidth = 1.0f;
 	drawSkip = 1;
 	showNumericalInfo = true;
@@ -39,12 +31,33 @@ ofxHistoryPlot::ofxHistoryPlot(float * val, string varName, float maxHistory, bo
 	shrinkBackInAutoRange = false;
 	plotNeedsRefresh = true;
 	gridMesh.setMode(OF_PRIMITIVE_LINES);
-	plotMesh.setMode(OF_PRIMITIVE_LINE_STRIP);
-	smoothPlotMesh.setMode(OF_PRIMITIVE_LINE_STRIP);
 	gridUnit = 40;
 	smoothFactor = 0.1;
 	smoothValue = 0;
 	showSmoothedPlot = false;
+}
+
+ofxHistoryPlot::ofxHistoryPlot(float * val, string varName, float maxHistory, bool autoUpdate_){
+    add(val, varName);
+    ofxHistoryPlot(maxHistory, autoUpdate_);
+}
+
+void ofxHistoryPlot::add(float * val, string varName){
+    
+    ofColor & c = values.back().lineColor;
+    c.setHsb(ofRandom(1), 0.5+ofRandom(0.5), 0.7);
+    add(val, varName, c);
+}
+
+void ofxHistoryPlot::add(float * val, string varName, ofColor lineColor){
+    values.push_back( Value(val, varName, lineColor) );
+    //    if (val != NULL){
+    //        lowest = *valf * 0.99;
+    //        highest = *valf * 1.01;
+    //    }else{
+    //        lowest = -1;
+    //        highest = 1;
+    //    }
 }
 
 void ofxHistoryPlot::setMaxHistory(int max){
@@ -56,59 +69,64 @@ void ofxHistoryPlot::reset(){
 	count = 0;
 }
 
+void ofxHistoryPlot::update(/*float newVal*/){
+    
+    for(int j =0; j<values.size();j++){
+        
+        Value & v = values[j];
+        float newVal = *v.valf;
+        
+        if (count <= 1){
+            smoothValue = *v.valf;
+        }
 
-void ofxHistoryPlot::update(float newVal){
+        count++;
+        
+//        if (newVal != newVal && valf != NULL)	//if no value is supplied (default value NAN), use the float* we were given..
+//            newVal = *valf;	
+        
+        if ( ( manualRange && onlyLowestIsFixed ) || !manualRange ){	//update graph range every now and then
+            int skip = 1;
+            if(shrinkBackInAutoRange){
+                //if (!autoUpdate) skip = 1;	//if not doing this too fast, no need to skip range processing
+                if ( count%skip == 0 ){			
+                    if (!onlyLowestIsFixed) lowest = FLT_MAX;
+                    highest = -FLT_MIN;
+                    for (int i = 0; i < v.values.size(); i+=skip){
+                        float val = v.values[i];
+                        if (val > highest) highest = val;
+                        if (!onlyLowestIsFixed) if (val < lowest) lowest = val;
+                    }	
+                    if (lowest == FLT_MAX) lowest = -1;
+                    if (highest == -FLT_MIN) highest = 1;
+                }
+            }
+            if ( newVal > highest) highest = newVal;
+            if ( newVal < lowest && !onlyLowestIsFixed) lowest = newVal;
+        }
 
-	if (count <= 1){
-		smoothValue = newVal;
-	}
+        v.values.push_back(newVal);
 
-	count++;
-	
-	if (newVal != newVal && valf != NULL)	//if no value is supplied (default value NAN), use the float* we were given..
-		newVal = *valf;	
-	
-	if ( ( manualRange && onlyLowestIsFixed ) || !manualRange ){	//update graph range every now and then
-		int skip = 1;
-		if(shrinkBackInAutoRange){
-			//if (!autoUpdate) skip = 1;	//if not doing this too fast, no need to skip range processing
-			if ( count%skip == 0 ){			
-				if (!onlyLowestIsFixed) lowest = FLT_MAX;
-				highest = -FLT_MIN;
-				for (int i = 0; i < values.size(); i+=skip){
-					float val = values[i];
-					if (val > highest) highest = val;
-					if (!onlyLowestIsFixed) if (val < lowest) lowest = val;
-				}	
-				if (lowest == FLT_MAX) lowest = -1;
-				if (highest == -FLT_MIN) highest = 1;
-			}
-		}
-		if ( newVal > highest) highest = newVal;
-		if ( newVal < lowest && !onlyLowestIsFixed) lowest = newVal;
-	}
+        if(showSmoothedPlot) {
+            smoothValue = newVal * smoothFactor + smoothValue * (1.0f - smoothFactor);
+            v.smoothValues.push_back(smoothValue);
+        }
 
-	values.push_back(newVal);
+        if (v.values.size() > MAX_HISTORY){
+            v.values.erase( v.values.begin() );
+        }
 
-	if(showSmoothedPlot) {
-		smoothValue = newVal * smoothFactor + smoothValue * (1.0f - smoothFactor);
-		smoothValues.push_back(smoothValue);
-	}
+        if(showSmoothedPlot) {
+            if (v.smoothValues.size() > MAX_HISTORY){
+                v.smoothValues.erase( v.smoothValues.begin() );
+            }
+        }
 
-	if (values.size() > MAX_HISTORY){
-		values.erase( values.begin() );
-	}
-
-	if(showSmoothedPlot) {
-		if (smoothValues.size() > MAX_HISTORY){
-			smoothValues.erase( smoothValues.begin() );
-		}
-	}
-
-	plotNeedsRefresh = true;
-//	float adapt = 0.05;
-//	lowest = lowest + adapt * (newVal - lowest);
-//	highest = highest - adapt * (highest - newVal);
+        plotNeedsRefresh = true;
+    //	float adapt = 0.05;
+    //	lowest = lowest + adapt * (newVal - lowest);
+    //	highest = highest - adapt * (highest - newVal);
+    }
 }
 
 void ofxHistoryPlot::draw(float x, float y){
@@ -205,28 +223,33 @@ void ofxHistoryPlot::draw(float x, float y , float w, float h){
 				#endif
 			}
 		}
-		if ( showNumericalInfo && haveData){
-			glColor4f(0.7,0.7,0.7,1);
-			float cVal = values[values.size()-1];
-			string text = varName + " " + ofToString(cVal, precision);
-			ofDrawBitmapString(text, x + w - (text.length()) * 8  , y + 10);
-		}
-		if ( showNumericalInfo ){
-			glColor4f(0.33,0.33,0.33, 1);
-			ofDrawBitmapString(ofToString(highest, precision), 1 + x , y + 10);
-			ofDrawBitmapString(ofToString(lowest, precision), 1 + x , y + h - 1);
-		}
-
-		for(int i = 0; i < horizontalGuides.size(); i++){
-			float myY = horizontalGuides[i];
-			if (myY > lowest && myY < highest){ //TODO negative!
-				float yy = ofMap( myY, lowest, highest, 0, h, true);
-				ofSetColor(horizontalGuideColors[i], 100);
-				ofDrawBitmapString(ofToString(horizontalGuides[i], precision), 10 * i + x, y + h - yy + 10 );
-				ofSetColor(horizontalGuideColors[i], 128 );
-				ofLine( x, y + h - yy, x + w, y + h - yy );
-			}
-		}
+    
+        for (int j=0; j<values.size(); j++) {
+            Value & v = values[j];
+        
+            if ( showNumericalInfo && haveData){
+                glColor4f(0.7,0.7,0.7,1);
+                float cVal = v.values[v.values.size()-1];
+                string text = v.varName + " " + ofToString(cVal, precision);
+                ofDrawBitmapString(text, x + w - (text.length()) * 8  , y + 10 + j * 15);
+            }
+            if ( showNumericalInfo ){
+                glColor4f(0.33,0.33,0.33, 1);
+                ofDrawBitmapString(ofToString(highest, precision), 1 + x , y + 10);
+                ofDrawBitmapString(ofToString(lowest, precision), 1 + x , y + h - 1);
+            }
+        }
+    
+        for(int i = 0; i < horizontalGuides.size(); i++){
+            float myY = horizontalGuides[i];
+            if (myY > lowest && myY < highest){ //TODO negative!
+                float yy = ofMap( myY, lowest, highest, 0, h, true);
+                ofSetColor(horizontalGuideColors[i], 100);
+                ofDrawBitmapString(ofToString(horizontalGuides[i], precision), 10 * i + x, y + h - yy + 10 );
+                ofSetColor(horizontalGuideColors[i], 128 );
+                ofLine( x, y + h - yy, x + w, y + h - yy );
+            }
+        }
 
 		
 	#ifndef TARGET_OPENGLES	
@@ -242,33 +265,37 @@ void ofxHistoryPlot::draw(float x, float y , float w, float h){
 		glEnable(GL_LINE_SMOOTH);
 		ofSetLineWidth(lineWidth);
 		glHint (GL_LINE_SMOOTH_HINT, GL_FASTEST);
-
-			if(needsMesh){
-				refillPlotMesh(plotMesh, values, x, y, w, h);
-				if (showSmoothedPlot){
-					refillPlotMesh(smoothPlotMesh, smoothValues, x, y, w, h);
-				}
-			}
-
-			if (colorSet){
-				#ifndef TARGET_OPENGLES
-				glPushAttrib(GL_CURRENT_BIT);
-				#endif
-				if(showSmoothedPlot){
-					glColor4ub(lineColor.r, lineColor.g, lineColor.b, lineColor.a / 3);
-				}else{
-					glColor4ub(lineColor.r, lineColor.g, lineColor.b, lineColor.a);
-				}
-			}
-
-			plotMesh.draw();
-			if (showSmoothedPlot){
-				if (colorSet){
-					glColor4ub(lineColor.r, lineColor.g, lineColor.b, lineColor.a);
-				}
-
-				smoothPlotMesh.draw();
-			}
+        
+        for (int j=0; j<values.size(); j++) {
+            
+            Value & v = values[j];
+            
+            if(needsMesh){
+                refillPlotMesh(v.plotMesh, v.values, x, y, w, h);
+                if (showSmoothedPlot){
+                    refillPlotMesh(v.smoothPlotMesh, v.smoothValues, x, y, w, h);
+                }
+            }
+            
+            if (colorSet){
+#ifndef TARGET_OPENGLES
+                glPushAttrib(GL_CURRENT_BIT);
+#endif
+                if(showSmoothedPlot){
+                    glColor4ub(v.lineColor.r, v.lineColor.g, v.lineColor.b, v.lineColor.a / 3);
+                }else{
+                    glColor4ub(v.lineColor.r, v.lineColor.g, v.lineColor.b, v.lineColor.a);
+                }
+            }
+            v.plotMesh.draw();
+            if (showSmoothedPlot){
+                if (colorSet){
+                    glColor4ub(v.lineColor.r, v.lineColor.g, v.lineColor.b, v.lineColor.a);
+                }
+                
+                v.smoothPlotMesh.draw();
+            }
+        }
 
 		#ifndef TARGET_OPENGLES
 			if (colorSet) glPopAttrib();
